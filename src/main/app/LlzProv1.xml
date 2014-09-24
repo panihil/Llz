@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:ldap="http://www.mulesoft.org/schema/mule/ldap"
+   xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:jdbc-ee="http://www.mulesoft.org/schema/mule/ee/jdbc"
+   xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+   xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:spring="http://www.springframework.org/schema/beans"
+   version="EE-3.4.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/jdbc http://www.mulesoft.org/schema/mule/ee/jdbc/current/mule-jdbc-ee.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/ldap http://www.mulesoft.org/schema/mule/ldap/current/mule-ldap.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+   <!-- xxxxxxxxxxxxxxx -->
+   <!-- TODO MOVE pass to properties -->
+   <ldap:config name="ldapConf" url="${ldap.url}" authDn="${ldap.authDn}" maxPoolSize="3"
+       poolTimeout="10000" authPassword="${ldap.pass}" doc:name="LDAP" />
+   <!-- xxxxxxxxxxxxxxx --> 
+   <flow name="Provision" doc:name="Provision">
+      <http:inbound-endpoint exchange-pattern="request-response" host="${http.host}"
+         port="${http.port}" doc:name="HTTP In-Hole" path="${http.path}" mimeType="text/html">
+         <custom-transformer class="org.mule.transport.http.transformers.HttpRequestBodyToParamMap"></custom-transformer>
+      </http:inbound-endpoint>
+      <scripting:component doc:name="Parse JSON to map">
+         <scripting:script engine="Groovy" file="script1.groovy" />
+      </scripting:component>
+      <flow-ref name="LdapUpdate" doc:name="Go to LDAP Update Flow" />
+      <!-- <scripting:component doc:name="Groovy"> <scripting:script engine="Groovy"><![CDATA[ log.info(" CN is 
+         " + message.getProperty("cn",org.mule.api.transport.PropertyScope.INVOCATION) ); log.info("\nAfter XForm " +payload.getClass() 
+         + " " + payload ); return payload;]]></scripting:script> </scripting:component> -->
+      <!-- Exception! -->
+      <catch-exception-strategy doc:name="Catch Exception Strategy">
+         <scripting:component doc:name="Log error and set return msg">
+            <scripting:script engine="Groovy"><![CDATA[
+         def msg = "LDAP Prov Failed for " + message.getInvocationProperty("cn") + " dn:" +  message.getInvocationProperty("dn") + "  Exception message: "+ message.getExceptionPayload().getMessage() + " " +  message.getExceptionPayload().getRootException()  ;
+         log.error(msg + "   " + payload.getClass() + " " + payload );
+         return msg;
+         ]]></scripting:script>
+         </scripting:component>
+      </catch-exception-strategy>
+   </flow>
+   <sub-flow name="LdapUpdate" doc:name="LdapUpdate">
+      <ldap:map-to-ldap-entry doc:name="Create LDAP Entity from map" />
+      <enricher doc:name="Msg Enricher" target="#[variable:EntryExists]">
+         <ldap:exists dn="#[header:INVOCATION:dn]" config-ref="ldapConf" doc:name="LDAP Check Entity Exists" />
+      </enricher>
+      <scripting:component doc:name="Figure Operation">
+         <scripting:script engine="Groovy"><![CDATA[          
+            if( message.getInvocationProperty('OP') == 'PR' || message.getInvocationProperty('OP') == 'PU' )
+               if(  message.getInvocationProperty('EntryExists')   )       
+                  message.setInvocationProperty( "OPERATION", "UPDATE" );
+               else  message.setInvocationProperty( "OPERATION", "ADD" );          
+            if( message.getInvocationProperty('OP') == 'PD' )
+               if(  message.getInvocationProperty('EntryExists')   )   
+                  message.setInvocationProperty( "OPERATION", "PURGE" );
+                  else message.setInvocationProperty( "OPERATION", "PURGENOT" );                      
+            log.debug("\nEntryExists? "  +  message.getInvocationProperty('EntryExists') ); 
+            return payload;
+            ]]></scripting:script>
+      </scripting:component>
+      <choice doc:name="Choice" tracking:enable-default-events="true">
+         <!-- 'PR' for add or update -->
+         <when expression="header:INVOCATION:OPERATION=ADD">
+            <ldap:add config-ref="ldapConf" doc:name="Add to LDAP" />
+            <scripting:component doc:name="Log and Set Return Msg">
+               <scripting:script engine="Groovy" name="Add Script"><![CDATA[
+            log.debug("\nAfter Add  ---------------> " +payload.getClass() + " " + payload ); 
+            def msg = "Add Entry Success for "+ message.getInvocationProperty("cn") + " dn:" +  message.getInvocationProperty("dn");
+            return msg;
+            ]]></scripting:script>
+            </scripting:component>
+         </when>
+         <when expression="header:INVOCATION:OPERATION=UPDATE">
+            <ldap:modify config-ref="ldapConf" doc:name="Modify LDAP" />
+            <scripting:component doc:name="Log and Set Return Msg">
+               <scripting:script engine="Groovy" name="Modify Script"><![CDATA[
+            log.debug("\nAfter Modify  ---------------> " +payload.getClass() + " " + payload ); 
+            def msg = "Modify Entry OK for "+ message.getInvocationProperty("cn") + " dn:" +  message.getInvocationProperty("dn");
+            return msg;
+            ]]></scripting:script>
+            </scripting:component>
+         </when>
+         <when expression="header:INVOCATION:OPERATION=PURGE">
+            <ldap:delete dn="#[header:INVOCATION:dn]" config-ref="ldapConf" doc:name="Purge from LDAP" />
+            <scripting:component doc:name="Log and Set Return Msg">
+               <scripting:script engine="Groovy" name="Purge Script"><![CDATA[
+            log.debug("\nAfter Purge  ---------------> " +payload.getClass() + " " + payload ); 
+            def msg = "Purge Entry Success for "+ message.getInvocationProperty("cn") + " dn:" +  message.getInvocationProperty("dn");
+            return msg;
+            ]]></scripting:script>
+            </scripting:component>
+         </when>
+         <when expression="header:INVOCATION:OPERATION=PURGENOT">
+            <scripting:component doc:name="Log and Set Return Msg (Nothing to Purge)">
+               <scripting:script engine="Groovy" name="Purge Not Script"><![CDATA[
+            log.debug("\nAfter Purge  - Noting to purge " +payload.getClass() + " " + payload ); 
+            def msg = "Purge Entry Success for "+ message.getInvocationProperty("cn") + " dn:" +  message.getInvocationProperty("dn");
+            return msg;
+            ]]></scripting:script>
+            </scripting:component>
+         </when>
+         <otherwise>
+            <scripting:component doc:name="Log and Set Return Msg (Operation not Defined)">
+               <scripting:script engine="Groovy"><![CDATA[
+            def msg = "Operation not implemented " +  message.getInvocationProperty("OP");
+            log.debug( msg );
+            return msg ;
+            ]]></scripting:script>
+            </scripting:component>
+         </otherwise>
+      </choice>
+   </sub-flow>
+   <flow name="GetProvStatus" doc:name="GetProvStatus">
+      <http:inbound-endpoint exchange-pattern="request-response" host="${http.host}"
+         port="${http.port}" doc:name="HTTP In-Hole" path="${http.pathQ}" mimeType="text/html">
+         <custom-transformer class="org.mule.transport.http.transformers.HttpRequestBodyToParamMap"></custom-transformer>
+      </http:inbound-endpoint>
+      <scripting:component doc:name="Query Setup">
+         <scripting:script engine="Groovy"><![CDATA[
+            
+            def jsonResult = JsonUtil.slurpit( payload.pd );
+
+log.debug( jsonResult );
+
+def ldapMap = [:];
+	ldapMap["dn"] =  "employeeNumber=" + JsonUtil.getIdentifierBasedOnType( jsonResult.Identifier, "employeeNumber" )  +",ou=people,o="  + jsonResult.Co.name +",dc=gw-astronomy,dc=org" ;
+
+log.debug( ldapMap );
+
+
+return ldapMap;
+]]></scripting:script>
+      </scripting:component>
+      <ldap:lookup dn="#[map-payload:dn]" config-ref="ldapConf" doc:name="LDAP">
+         <ldap:attributes>
+            <ldap:attribute>modifyTimestamp</ldap:attribute>
+            <ldap:attribute>cn</ldap:attribute>
+         </ldap:attributes>
+      </ldap:lookup>
+      <ldap:ldap-entry-to-map doc:name="LDAP"/>
+      <scripting:component doc:name="Query Setup">
+         <scripting:script engine="Groovy"><![CDATA[
+            
+          
+            
+            def retVal = null;
+            
+          //  if(  payload.getDn() != null ) retVal =  payload.getDn();
+            
+            if( !payload.dn.empty ) retVal = payload.dn;
+            
+            return retVal;
+            
+            ]]></scripting:script>
+      </scripting:component>
+      <catch-exception-strategy doc:name="Catch Exception Strategy">
+         <scripting:component doc:name="Query Exception">
+            <scripting:script engine="Groovy"><![CDATA[
+            def retVal = null;
+            
+            if( message.getExceptionPayload().getRootException().toString().indexOf("error code 32") > -1 )
+            retVal = "Not Found";
+            else retVal = "Connection error. See logs.";          
+  
+            return retVal;
+            
+            ]]></scripting:script>
+         </scripting:component>
+      </catch-exception-strategy>
+   </flow>
+</mule>
