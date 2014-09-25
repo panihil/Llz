@@ -11,11 +11,14 @@ http://www.mulesoft.org/schema/mule/ee/jdbc http://www.mulesoft.org/schema/mule/
 http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
 http://www.mulesoft.org/schema/mule/ldap http://www.mulesoft.org/schema/mule/ldap/current/mule-ldap.xsd
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
-   <!-- xxxxxxxxxxxxxxx -->
-   <!-- TODO MOVE pass to properties -->
-   <ldap:config name="ldapConf" url="${ldap.url}" authDn="${ldap.authDn}" maxPoolSize="3"
+ <!-- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxx Globals               xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx --> 
+   <ldap:config name="ldapConf" url="${ldap.url}" authDn="${ldap.authDn}" maxPoolSize="3" 
       poolTimeout="10000" authPassword="${ldap.pass}" doc:name="LDAP" />
-   <!-- xxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxx Provision Flow        xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
    <flow name="Provision" doc:name="Provision">
       <http:inbound-endpoint exchange-pattern="request-response" host="${http.host}"
          port="${http.port}" doc:name="HTTP In-Hole" path="${http.path}" mimeType="text/html">
@@ -110,8 +113,11 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
          </otherwise>
       </choice>
    </sub-flow>
- 
-   <flow name="GetProvStatus" doc:name="GetProvStatus"  >
+   
+ <!-- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxx Get Status Flow       xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+ <!-- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -->
+    <flow name="GetProvStatus" doc:name="GetProvStatus"  >
       <http:inbound-endpoint exchange-pattern="request-response" host="${http.host}"
          port="${http.port}" doc:name="HTTP In-Hole" path="${http.pathQ}" mimeType="text/html">
          <custom-transformer class="org.mule.transport.http.transformers.HttpRequestBodyToParamMap"></custom-transformer>
@@ -128,7 +134,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
       </scripting:component>
       <ldap:lookup dn="#[map-payload:dn]" config-ref="ldapConf" doc:name="LDAP Lookup">
       <!-- We can request specific attributes, including operational attrs. If any are specificied, only those plus   -->
-         <ldap:attributes doc:description="Extra values we want back">        
+         <ldap:attributes>        
             <ldap:attribute>modifyTimestamp</ldap:attribute>
             <ldap:attribute>cn</ldap:attribute>
          </ldap:attributes>
@@ -138,7 +144,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
          <scripting:script engine="Groovy"><![CDATA[         
             // Here we define the return value. Lots of options here, for now its just the DN 
             
-            def retVal = "Error";
+            def retVal = "Error"; 
             if( !payload.dn.empty ) retVal = payload.dn;
             return retVal;
             ]]></scripting:script>
