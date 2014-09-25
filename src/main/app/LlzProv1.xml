@@ -14,8 +14,8 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
    <!-- xxxxxxxxxxxxxxx -->
    <!-- TODO MOVE pass to properties -->
    <ldap:config name="ldapConf" url="${ldap.url}" authDn="${ldap.authDn}" maxPoolSize="3"
-       poolTimeout="10000" authPassword="${ldap.pass}" doc:name="LDAP" />
-   <!-- xxxxxxxxxxxxxxx --> 
+      poolTimeout="10000" authPassword="${ldap.pass}" doc:name="LDAP" />
+   <!-- xxxxxxxxxxxxxxx -->
    <flow name="Provision" doc:name="Provision">
       <http:inbound-endpoint exchange-pattern="request-response" host="${http.host}"
          port="${http.port}" doc:name="HTTP In-Hole" path="${http.path}" mimeType="text/html">
@@ -110,58 +110,46 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
          </otherwise>
       </choice>
    </sub-flow>
-   <flow name="GetProvStatus" doc:name="GetProvStatus">
+ 
+   <flow name="GetProvStatus" doc:name="GetProvStatus"  >
       <http:inbound-endpoint exchange-pattern="request-response" host="${http.host}"
          port="${http.port}" doc:name="HTTP In-Hole" path="${http.pathQ}" mimeType="text/html">
          <custom-transformer class="org.mule.transport.http.transformers.HttpRequestBodyToParamMap"></custom-transformer>
       </http:inbound-endpoint>
       <scripting:component doc:name="Query Setup">
-         <scripting:script engine="Groovy"><![CDATA[
-            
+         <scripting:script engine="Groovy"><![CDATA[       
             def jsonResult = JsonUtil.slurpit( payload.pd );
-
-log.debug( jsonResult );
-
-def ldapMap = [:];
-	ldapMap["dn"] =  "employeeNumber=" + JsonUtil.getIdentifierBasedOnType( jsonResult.Identifier, "employeeNumber" )  +",ou=people,o="  + jsonResult.Co.name +",dc=gw-astronomy,dc=org" ;
-
-log.debug( ldapMap );
-
-
-return ldapMap;
-]]></scripting:script>
+            log.debug( jsonResult );
+            def ldapMap = [:];
+	        ldapMap["dn"] =  "employeeNumber=" + JsonUtil.getIdentifierBasedOnType( jsonResult.Identifier, "employeeNumber" )  +",ou=people,o="  + jsonResult.Co.name +",dc=gw-astronomy,dc=org" ;
+            log.debug( ldapMap );
+            return ldapMap;
+         ]]></scripting:script>
       </scripting:component>
-      <ldap:lookup dn="#[map-payload:dn]" config-ref="ldapConf" doc:name="LDAP">
-         <ldap:attributes>
+      <ldap:lookup dn="#[map-payload:dn]" config-ref="ldapConf" doc:name="LDAP Lookup">
+      <!-- We can request specific attributes, including operational attrs. If any are specificied, only those plus   -->
+         <ldap:attributes doc:description="Extra values we want back">        
             <ldap:attribute>modifyTimestamp</ldap:attribute>
             <ldap:attribute>cn</ldap:attribute>
          </ldap:attributes>
       </ldap:lookup>
-      <ldap:ldap-entry-to-map doc:name="LDAP"/>
-      <scripting:component doc:name="Query Setup">
-         <scripting:script engine="Groovy"><![CDATA[
+      <ldap:ldap-entry-to-map doc:name="LDAP to Map" />
+      <scripting:component doc:name="Create Response">
+         <scripting:script engine="Groovy"><![CDATA[         
+            // Here we define the return value. Lots of options here, for now its just the DN 
             
-          
-            
-            def retVal = null;
-            
-          //  if(  payload.getDn() != null ) retVal =  payload.getDn();
-            
+            def retVal = "Error";
             if( !payload.dn.empty ) retVal = payload.dn;
-            
             return retVal;
-            
             ]]></scripting:script>
       </scripting:component>
       <catch-exception-strategy doc:name="Catch Exception Strategy">
-         <scripting:component doc:name="Query Exception">
+         <scripting:component doc:name="Create Error Response">
             <scripting:script engine="Groovy"><![CDATA[
-            def retVal = null;
-            
+            def retVal = null;          
             if( message.getExceptionPayload().getRootException().toString().indexOf("error code 32") > -1 )
-            retVal = "Not Found";
+               retVal = "Not Found";
             else retVal = "Connection error. See logs.";          
-  
             return retVal;
             
             ]]></scripting:script>
