@@ -125,7 +125,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
       <scripting:component doc:name="Query Setup">
          <scripting:script engine="Groovy"><![CDATA[       
             def jsonResult = JsonUtil.slurpit( payload.pd );
-            log.debug( jsonResult );
+            log.info( jsonResult );
             def ldapMap = [:];
 	        ldapMap["dn"] =  "employeeNumber=" + JsonUtil.getIdentifierBasedOnType( jsonResult.Identifier, "employeeNumber" )  +",ou=people,o="  + jsonResult.Co.name +",dc=gw-astronomy,dc=org" ;
             log.debug( ldapMap );
