@@ -94,9 +94,12 @@ class JsonUtil
 		
 		   if( eduPersonAffiliation.length() > 0 ) eduPersonAffiliation.append(",");
 		   
-		   def couNameVal = (!r.Cou.name.empty) ? r.Cou.name : r.Cou.title;
-			eduPersonAffiliation.append( couNameVal  + sep )
-		   
+		   if( !r.Cou.empty )
+		   {
+			   def couNameVal = (!r.Cou.name.empty) ? r.Cou.name : r.Cou.title;
+			   eduPersonAffiliation.append( couNameVal  + sep );
+		   }
+
 		   def roleTitleVal ;
 		   if( !r.title.empty )
 			   roleTitleVal = r.title;
